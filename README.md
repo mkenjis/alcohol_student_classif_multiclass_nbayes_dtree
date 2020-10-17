@@ -1,0 +1,2 @@
+# alcohol_student_classif_multiclass_nbayes_dtree
+alcohol student consumption using MLlib classification models
