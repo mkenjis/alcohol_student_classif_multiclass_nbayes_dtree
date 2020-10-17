@@ -1,0 +1,223 @@
+---- Feature extraction & Data Munging --------------
+
+val rdd = sc.textFile("student_alcohol/student-por.csv").map(x => x.split(","))
+
+scala> rdd.first
+res1: Array[String] = Array(GP, F, 18, U, GT3, A, 4, 4, at_home, teacher, course, mother, 2, 2, 0, yes, no, no, no, yes, yes, no, no, 4, 3, 4, 1, 1, 3, 4, 0, 11, 11)
+
+val categ_yesno = rdd.map(x => x(15)).distinct.zipWithIndex.collect.toMap
+categ_yesno: scala.collection.immutable.Map[String,Long] = Map(yes -> 0, no -> 1)
+
+val categ_sex = rdd.map(x => x(1)).distinct.zipWithIndex.collect.toMap
+categ_sex: scala.collection.immutable.Map[String,Long] = Map(M -> 0, F -> 1)
+
+val categ_address = rdd.map(x => x(3)).distinct.zipWithIndex.collect.toMap
+categ_address: scala.collection.immutable.Map[String,Long] = Map(R -> 0, U -> 1)
+
+val categ_famsize = rdd.map(x => x(4)).distinct.zipWithIndex.collect.toMap
+cat_famsize: scala.collection.immutable.Map[String,Long] = Map(LE3 -> 0, GT3 -> 1)
+
+val categ_pstatus = rdd.map(x => x(5)).distinct.zipWithIndex.collect.toMap
+categ_pstatus: scala.collection.immutable.Map[String,Long] = Map(T -> 0, A -> 1)
+
+---- Conversion to 1-to-k binary encoding vectors 
+
+def oneHotEncColumns(rddx: org.apache.spark.rdd.RDD[Array[String]], idx: Int):org.apache.spark.rdd.RDD[Array[Double]] = {
+  val categories = rddx.map(r => r(idx)).distinct.zipWithIndex.collect.toMap
+  val numCategories = categories.size
+  val vetcateg = rddx.map(r => {
+      val categoryIdx = categories(r(idx)).toInt
+      val categoryFeatures = Array.ofDim[Double](numCategories)
+      categoryFeatures(categoryIdx) = 1.0
+      categoryFeatures
+  })
+  vetcateg
+}
+
+def mergeArray(rddx: org.apache.spark.rdd.RDD[Array[String]], idx: Int*):org.apache.spark.rdd.RDD[Array[Double]] = {
+  var i = 0
+  var arr1 = oneHotEncColumns(rddx,idx(i))
+  for (j <- 1 until idx.size) {
+    var arr2 = oneHotEncColumns(rddx,idx(j))
+    var flt1 = arr1.zip(arr2).map(x => (x._1.toList ++ x._2.toList).toArray)
+    arr1 = flt1
+  }
+  arr1
+}
+
+val concat = mergeArray(rdd,8,9,10,11)
+
+concat.first
+res2: Array[Double] = Array(0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0)
+
+val rdd1 = rdd.map( x => Array(categ_sex(x(1)),x(2),categ_address(x(3)),categ_famsize(x(4)),categ_pstatus(x(5)),x(6),x(7),x(12),x(13),x(14),categ_yesno(x(15)),categ_yesno(x(16)),categ_yesno(x(17)),categ_yesno(x(18)),categ_yesno(x(19)),categ_yesno(x(20)),categ_yesno(x(21)),categ_yesno(x(22)),x(23),x(24),x(25),x(28),x(29),x(30),x(31),x(32),x(26),x(27)))
+
+rdd1.first
+res3: Array[Any] = Array(1, 18, 1, 1, 1, 4, 4, 2, 2, 0, 0, 1, 1, 1, 0, 0, 1, 1, 4, 3, 4, 3, 4, 0, 11, 11, 1, 1)
+
+val rdd2 = rdd1.map(x => x.map( y => y.toString.toDouble ))
+
+rdd2.first
+res4: Array[Double] = Array(1.0, 18.0, 1.0, 1.0, 1.0, 4.0, 4.0, 2.0, 2.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 4.0, 3.0, 4.0, 3.0, 4.0, 0.0, 11.0, 11.0, 1.0, 1.0)
+
+val vect = concat.zip(rdd2).map(x => (x._1.toList ++ x._2.toList).toArray)
+
+vect.first
+res5: Array[Double] = Array(0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 18.0, 1.0, 1.0, 1.0, 4.0, 4.0, 2.0, 2.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 4.0, 3.0, 4.0, 3.0, 4.0, 0.0, 11.0, 11.0, 1.0, 1.0)
+
+
+import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.mllib.regression.LabeledPoint
+
+val data = vect.map(r => {
+   val arr_size = r.size - 1
+   val label = r(arr_size).toDouble - 1
+   val features = r.slice(0, arr_size - 2)
+   LabeledPoint(label, Vectors.dense(features))
+ })
+ 
+data.cache
+
+val sets = data.randomSplit(Array(0.8,0.2))
+val trainSet = sets(0)
+val testSet = sets(1)
+
+
+---- Multiclass logistic regression --------------
+
+import org.apache.spark.mllib.classification.{LogisticRegressionModel, LogisticRegressionWithLBFGS}
+val numIterations = 100
+val model = new LogisticRegressionWithLBFGS().setNumClasses(5).run(trainSet)
+
+val validPredicts =  testSet.map(p => (model.predict(p.features),p.label))
+
+validPredicts.take(20)
+res8: Array[(Double, Double)] = Array((0.0,2.0), (2.0,1.0), (0.0,0.0), (0.0,1.0), (2.0,1.0), (0.0,2.0), (2.0,3.0), (3.0,4.0), (0.0,0.0), (0.0,1.0), (1.0,3.0), (0.0,0.0), (2.0,2.0), (0.0,0.0), (3.0,4.0), (2.0,4.0), (0.0,2.0), (2.0,0.0), (3.0,4.0), (0.0,0.0))
+
+import org.apache.spark.mllib.evaluation.MulticlassMetrics
+val metrics = new MulticlassMetrics(validPredicts)
+validPredicts.filter(x => x._1 == x._2).count  // 46
+validPredicts.count                            // 133
+val accuracy = metrics.accuracy   // 0.3458646616541353
+
+metrics.confusionMatrix
+res11: org.apache.spark.mllib.linalg.Matrix =
+32.0  5.0  5.0  2.0  5.0
+18.0  6.0  8.0  2.0  1.0
+10.0  3.0  3.0  3.0  2.0
+4.0   4.0  2.0  3.0  1.0
+1.0   0.0  3.0  8.0  2.0
+
+
+---- MLlib Maive Bayes regression --------------
+
+import org.apache.spark.mllib.classification.NaiveBayes
+val model = NaiveBayes.train(trainSet)
+
+val validPredicts =  testSet.map(p => (model.predict(p.features),p.label))
+
+validPredicts.take(20)
+res12: Array[(Double, Double)] = Array((1.0,2.0), (2.0,1.0), (0.0,0.0), (0.0,1.0), (2.0,1.0), (0.0,2.0), (1.0,3.0), (0.0,4.0), (0.0,0.0), (3.0,1.0), (1.0,3.0), (0.0,0.0), (0.0,2.0), (0.0,0.0), (0.0,4.0), (0.0,4.0), (0.0,2.0), (2.0,0.0), (3.0,4.0), (0.0,0.0))
+
+import org.apache.spark.mllib.evaluation.MulticlassMetrics
+val metrics = new MulticlassMetrics(validPredicts)
+validPredicts.filter(x => x._1 == x._2).count  // 49
+validPredicts.count                            // 113
+val accuracy = metrics.accuracy   // 0.3684210526315789
+
+metrics.confusionMatrix
+res17: org.apache.spark.mllib.linalg.Matrix =
+39.0  0.0  4.0  5.0  1.0
+22.0  2.0  5.0  5.0  1.0
+14.0  1.0  2.0  4.0  0.0
+6.0   2.0  2.0  4.0  0.0
+4.0   0.0  2.0  6.0  2.0
+
+------------------------- Estimation is not so bad. But analyze the individual statistics and standardize 
+
+scala> val vet1 = data.map{ case LabeledPoint(x,y) => y }
+vet1: org.apache.spark.rdd.RDD[org.apache.spark.mllib.linalg.Vector] = MapPartitionsRDD[229] at map at <console>:37
+
+scala> import org.apache.spark.mllib.linalg.distributed.RowMatrix
+import org.apache.spark.mllib.linalg.distributed.RowMatrix
+
+scala> val wineMat = new RowMatrix(vet1)
+wineMat: org.apache.spark.mllib.linalg.distributed.RowMatrix = org.apache.spark.mllib.linalg.distributed.RowMatrix@18fcbbb2
+
+scala> val wineStats = wineMat.computeColumnSummaryStatistics()
+wineStats: org.apache.spark.mllib.stat.MultivariateStatisticalSummary = org.apache.spark.mllib.stat.MultivariateOnlineSummarizer@201b7240
+
+scala> wineStats.min
+res18: org.apache.spark.mllib.linalg.Vector = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,15.0,0.0,0.0,0.0,0.0,0.0,1.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.0,1.0,1.0,1.0,0.0,0.0,0.0]
+
+scala> wineStats.max
+res19: org.apache.spark.mllib.linalg.Vector = [1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,22.0,1.0,1.0,1.0,4.0,4.0,4.0,4.0,3.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,5.0,5.0,5.0,5.0,32.0,19.0,19.0]
+
+scala> wineStats.mean
+res20: org.apache.spark.mllib.linalg.Vector = [0.07395993836671803,0.20801232665639446,0.11093990755007704,0.20955315870570107,0.3975346687211094,0.03543913713405239,0.06471494607087827,0.05546995377503852,0.27889060092449924,0.5654853620955316,0.2295839753466872,0.11093990755007704,0.4391371340523883,0.22033898305084745,0.7010785824345146,0.2357473035439137,0.06317411402157165,0.5901386748844376,16.74422187981513,0.6964560862865947,0.7041602465331279,0.12326656394453005,2.5146379044684166,2.3066255778120164,1.5685670261941442,1.930662557781203,0.22187981510015414,0.8952234206471494,0.386748844375963,0.9399075500770416,0.514637904468413,0.19722650231124808,0.10631741140215717,0.23266563944530047,0.6317411402157165,3.930662557781201,3.180277349768872,3.18489984591679,3.536209553158703,3....
+
+scala> wineStats.variance
+res21: org.apache.spark.mllib.linalg.Vector = [0.06859556012098385,0.1649974319465845,0.0987844547166581,0.16589625064201335,0.23987045597215087,0.034235956552340734,0.06062032756948012,0.05247389145694231,0.20142098955658277,0.24609085202305542,0.17714812912553027,0.0987844547166581,0.24667579752325516,0.1720548231847667,0.20989081017329603,0.18044855332990928,0.0592744773535734,0.24224828320873518,1.483859308718061,0.21173124845441227,0.2086400730468527,0.10823869580931728,1.287208240598072,1.209848009283036,0.560491924898705,0.6880861344138178,0.3519279423234227,0.09394319846297249,0.23754018528029827,0.056568509958340465,0.2501712035610341,0.1585725427533337,0.09516064600810363,0.1788078525366661,0.23300329091289543,0.9133947763891264,1.1047956019707426,1.3824259544598543,2.09166523...
+
+
+-------------------------- Decide to scale features because columns have different scales and then retrain the model 
+
+import org.apache.spark.mllib.feature.StandardScaler
+val scaler = new StandardScaler(true, true).fit(trainSet.map(x => x.features))
+ 
+val trainScaled = trainSet.map(x => LabeledPoint(x.label,scaler.transform(x.features)))
+val validScaled = testSet.map(x => LabeledPoint(x.label, scaler.transform(x.features)))
+
+---- Multiclass logistic regression --------------
+
+import org.apache.spark.mllib.classification.{LogisticRegressionModel, LogisticRegressionWithLBFGS}
+val numIterations = 100
+val model = new LogisticRegressionWithLBFGS().setNumClasses(5).run(trainScaled)
+
+val validPredicts =  validScaled.map(p => (model.predict(p.features),p.label))
+
+validPredicts.take(20)
+res23: Array[(Double, Double)] = Array((0.0,2.0), (2.0,1.0), (0.0,0.0), (0.0,1.0), (2.0,1.0), (0.0,2.0), (2.0,3.0), (3.0,4.0), (4.0,0.0), (0.0,1.0), (1.0,3.0), (2.0,0.0), (4.0,2.0), (0.0,0.0), (4.0,4.0), (2.0,4.0), (4.0,2.0), (2.0,0.0), (3.0,4.0), (4.0,0.0))
+
+import org.apache.spark.mllib.evaluation.MulticlassMetrics
+val metrics = new MulticlassMetrics(validPredicts)
+validPredicts.filter(x => x._1 == x._2).count  // 40
+validPredicts.count                            // 133
+val accuracy = metrics.accuracy   // 0.3007518796992481
+
+metrics.confusionMatrix
+res26: org.apache.spark.mllib.linalg.Matrix =
+22.0  8.0  8.0  6.0  5.0
+14.0  7.0  7.0  5.0  2.0
+7.0   4.0  2.0  5.0  3.0
+2.0   3.0  2.0  6.0  1.0
+0.0   0.0  4.0  7.0  3.0
+
+------- Not helpful on standardizing. Using decision tree model to evaluate performance.
+
+import org.apache.spark.mllib.tree.DecisionTree
+import org.apache.spark.mllib.tree.model.DecisionTreeModel
+
+val categoricalFeaturesInfo = Map[Int, Int]()
+
+val model = DecisionTree.trainClassifier(trainSet, 5, categoricalFeaturesInfo, "gini", 30, 32)
+
+val validPredicts = testSet.map(x => (model.predict(x.features),x.label))
+
+validPredicts.take(20)
+res27: Array[(Double, Double)] = Array((0.0,2.0), (1.0,1.0), (0.0,0.0), (0.0,1.0), (1.0,1.0), (0.0,2.0), (3.0,3.0), (2.0,4.0), (2.0,0.0), (0.0,1.0), (3.0,3.0), (0.0,0.0), (0.0,2.0), (1.0,0.0), (1.0,4.0), (1.0,4.0), (1.0,2.0), (2.0,0.0), (3.0,4.0), (2.0,0.0))
+
+import org.apache.spark.mllib.evaluation.MulticlassMetrics
+val metrics = new MulticlassMetrics(validPredicts)
+validPredicts.filter(x => x._1 == x._2).count  // 37
+validPredicts.count                            // 133
+val accuracy = metrics.accuracy   // 0.2781954887218045
+
+metrics.confusionMatrix
+res30: org.apache.spark.mllib.linalg.Matrix =
+23.0  13.0  8.0  3.0  2.0
+15.0  8.0   9.0  1.0  2.0
+13.0  5.0   1.0  2.0  0.0
+4.0   1.0   5.0  3.0  1.0
+0.0   5.0   3.0  4.0  2.0
+
