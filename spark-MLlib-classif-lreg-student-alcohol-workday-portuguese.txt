@@ -82,7 +82,7 @@ val trainSet = sets(0)
 val testSet = sets(1)
 
 
----- Multiclass logistic regression --------------
+---- MLlib Multiclass logistic regression --------------
 
 import org.apache.spark.mllib.classification.{LogisticRegressionModel, LogisticRegressionWithLBFGS}
 val numIterations = 100
@@ -132,7 +132,7 @@ res40: org.apache.spark.mllib.linalg.Matrix =
 3.0   1.0  0.0  0.0  1.0
 1.0   1.0  0.0  0.0  2.0
 
-------- MLlib DecisionTree regression --------------
+----- MLlib DecisionTree regression --------------
 
 import org.apache.spark.mllib.tree.DecisionTree
 import org.apache.spark.mllib.tree.model.DecisionTreeModel

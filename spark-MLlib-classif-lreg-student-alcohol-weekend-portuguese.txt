@@ -83,7 +83,7 @@ val trainSet = sets(0)
 val testSet = sets(1)
 
 
----- Multiclass logistic regression --------------
+---- MLlib Multiclass logistic regression --------------
 
 import org.apache.spark.mllib.classification.{LogisticRegressionModel, LogisticRegressionWithLBFGS}
 val numIterations = 100
@@ -109,7 +109,7 @@ res11: org.apache.spark.mllib.linalg.Matrix =
 1.0   0.0  3.0  8.0  2.0
 
 
----- MLlib Maive Bayes regression --------------
+---- MLlib Naive Bayes regression --------------
 
 import org.apache.spark.mllib.classification.NaiveBayes
 val model = NaiveBayes.train(trainSet)
@@ -133,7 +133,7 @@ res17: org.apache.spark.mllib.linalg.Matrix =
 6.0   2.0  2.0  4.0  0.0
 4.0   0.0  2.0  6.0  2.0
 
-------------------------- Estimation is not so bad. But analyze the individual statistics and standardize 
+----- Estimation is not so bad. But analyze the individual statistics and standardize 
 
 scala> val vet1 = data.map{ case LabeledPoint(x,y) => y }
 vet1: org.apache.spark.rdd.RDD[org.apache.spark.mllib.linalg.Vector] = MapPartitionsRDD[229] at map at <console>:37
@@ -160,7 +160,7 @@ scala> wineStats.variance
 res21: org.apache.spark.mllib.linalg.Vector = [0.06859556012098385,0.1649974319465845,0.0987844547166581,0.16589625064201335,0.23987045597215087,0.034235956552340734,0.06062032756948012,0.05247389145694231,0.20142098955658277,0.24609085202305542,0.17714812912553027,0.0987844547166581,0.24667579752325516,0.1720548231847667,0.20989081017329603,0.18044855332990928,0.0592744773535734,0.24224828320873518,1.483859308718061,0.21173124845441227,0.2086400730468527,0.10823869580931728,1.287208240598072,1.209848009283036,0.560491924898705,0.6880861344138178,0.3519279423234227,0.09394319846297249,0.23754018528029827,0.056568509958340465,0.2501712035610341,0.1585725427533337,0.09516064600810363,0.1788078525366661,0.23300329091289543,0.9133947763891264,1.1047956019707426,1.3824259544598543,2.09166523...
 
 
--------------------------- Decide to scale features because columns have different scales and then retrain the model 
+----- Decide to scale features because columns have different scales and then retrain the model 
 
 import org.apache.spark.mllib.feature.StandardScaler
 val scaler = new StandardScaler(true, true).fit(trainSet.map(x => x.features))
@@ -168,7 +168,7 @@ val scaler = new StandardScaler(true, true).fit(trainSet.map(x => x.features))
 val trainScaled = trainSet.map(x => LabeledPoint(x.label,scaler.transform(x.features)))
 val validScaled = testSet.map(x => LabeledPoint(x.label, scaler.transform(x.features)))
 
----- Multiclass logistic regression --------------
+---- MLlib Multiclass logistic regression --------------
 
 import org.apache.spark.mllib.classification.{LogisticRegressionModel, LogisticRegressionWithLBFGS}
 val numIterations = 100
@@ -193,7 +193,7 @@ res26: org.apache.spark.mllib.linalg.Matrix =
 2.0   3.0  2.0  6.0  1.0
 0.0   0.0  4.0  7.0  3.0
 
-------- Not helpful on standardizing. Using decision tree model to evaluate performance.
+---- Not helpful on standardizing. Using decision tree model to evaluate performance.
 
 import org.apache.spark.mllib.tree.DecisionTree
 import org.apache.spark.mllib.tree.model.DecisionTreeModel

@@ -82,7 +82,7 @@ val trainSet = sets(0)
 val testSet = sets(1)
 
 
----- Multiclass logistic regression --------------
+---- MLlib Multiclass logistic regression --------------
 
 import org.apache.spark.mllib.classification.{LogisticRegressionModel, LogisticRegressionWithLBFGS}
 val numIterations = 100
@@ -131,7 +131,7 @@ res32: org.apache.spark.mllib.linalg.Matrix =
 4.0   1.0  0.0  2.0  0.0
 2.0   0.0  1.0  3.0  2.0
 
-------------------------- Estimation is not so bad. But analyze the individual statistics and standardize 
+----- Estimation is not so bad. But analyze the individual statistics and standardize 
 
 scala> val vet1 = data.map{ case LabeledPoint(x,y) => y }
 vet1: org.apache.spark.rdd.RDD[org.apache.spark.mllib.linalg.Vector] = MapPartitionsRDD[229] at map at <console>:37
@@ -158,7 +158,7 @@ scala> wineStats.variance
 res31: org.apache.spark.mllib.linalg.Vector = [0.07886654244040352,0.12737904003084238,0.1255927520400951,0.19325322881192572,0.23012272698065928,0.04360341836406862,0.04819122277195914,0.06820021846687657,0.20255734755509866,0.24819122277195915,0.20030842382574054,0.08304311508063997,0.2329242433978025,0.19565636445415407,0.21400758208571613,0.17637987534537042,0.0746385658292103,0.24992610679174965,1.6282850350189506,0.17359120992096638,0.20583435070359185,0.09325965430829532,1.1984450298785574,1.1841804279380586,0.48651288312022095,0.7043243590567373,0.5530167705455246,0.11272890830816681,0.23791042858060785,0.24888517637987534,0.25055580543596995,0.1634260746642678,0.04819122277195914,0.13952322816937607,0.22306753196684445,0.8039966587418876,0.9977253742851631,1.2393882927456141,1....
 
 
--------------------------- Decide to scale features because columns have different scales and then retrain the model 
+----- Decide to scale features because columns have different scales and then retrain the model 
 
 import org.apache.spark.mllib.feature.StandardScaler
 val scaler = new StandardScaler(true, true).fit(trainSet.map(x => x.features))
@@ -191,7 +191,7 @@ res37: org.apache.spark.mllib.linalg.Matrix =
 2.0   2.0  2.0  1.0  0.0
 0.0   1.0  1.0  3.0  3.0
 
-------- Not helpful on standardizing. Using decision tree model to evaluate performance.
+----- Not helpful on standardizing. Using decision tree model to evaluate performance.
 
 import org.apache.spark.mllib.tree.DecisionTree
 import org.apache.spark.mllib.tree.model.DecisionTreeModel
